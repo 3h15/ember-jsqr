@@ -5,7 +5,7 @@ import { inject as service } from '@ember/service';
 type JSQR = typeof import('jsqr').default;
 type QRCode = import('jsqr').QRCode;
 
-import { drawBox } from './graphics/box';
+import { drawBox, drawScanArea } from './graphics/box';
 
 import ScannerService from 'ember-jsqr/services/ember-jsqr/-private/no-really-do-not-directly-access-this-service/scanner';
 
@@ -15,10 +15,19 @@ type Args = {
     onData: <T>(data: string) => T;
     onReady: <T>() => T;
     highlightColor?: string;
+    scanAreaSize?: number | 'ALL';
   };
 };
 
+type ScanArea = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 const DEFAULT_COLOR = '#FF3B58';
+const DEFAULT_SCAN_AREA_SIZE = 'ALL';
 const KEY = 'ember-jsqr/-private/no-really-do-not-directly-access-this-service/scanner';
 
 export default class AttachQrScannerModifier extends Modifier<Args> {
@@ -44,6 +53,28 @@ export default class AttachQrScannerModifier extends Modifier<Args> {
 
   get color() {
     return this.args?.named.highlightColor || DEFAULT_COLOR;
+  }
+
+  get scanAreaSize() {
+    return this.args?.named.scanAreaSize || DEFAULT_SCAN_AREA_SIZE;
+  }
+
+  get scanArea() {
+    if (this.scanAreaSize === 'ALL') {
+      return {
+        x: 0,
+        y: 0,
+        w: this.element.width,
+        h: this.element.height,
+      };
+    } else {
+      return {
+        x: Math.round((this.element.width - this.scanAreaSize) / 2),
+        y: Math.round((this.element.height - this.scanAreaSize) / 2),
+        w: this.scanAreaSize,
+        h: this.scanAreaSize,
+      };
+    }
   }
 
   didInstall() {
@@ -89,14 +120,23 @@ export default class AttachQrScannerModifier extends Modifier<Args> {
 
       this.canvas.drawImage(this.video, 0, 0, this.element.width, this.element.height);
 
+      if (this.scanAreaSize !== 'ALL') {
+        drawScanArea({
+          canvas: this.canvas,
+          scanArea: this.scanArea,
+          element: this.element,
+        });
+      }
+
       scan({
         jsQR: this.scanner.jsQR,
         canvas: this.canvas,
-        element: this.element,
+        scanArea: this.scanArea,
         scanner: this.scanner,
         onScan: (code) =>
           drawBox({
             canvas: this.canvas!, // TS, huh?
+            scanArea: this.scanArea,
             location: code.location,
             color: this.color,
           }),
@@ -110,7 +150,7 @@ export default class AttachQrScannerModifier extends Modifier<Args> {
 type ScanArgs = {
   canvas: CanvasRenderingContext2D;
   jsQR: JSQR;
-  element: HTMLCanvasElement;
+  scanArea: ScanArea;
   scanner: ScannerService;
   onScan: (code: QRCode) => void;
 };
@@ -119,9 +159,9 @@ type ScanArgs = {
  * @note
  * See the service about why this is the way it is.
  */
-function scan({ canvas, jsQR, element, scanner, onScan }: ScanArgs) {
-  let imageData = canvas.getImageData(0, 0, element.width, element.height);
-  let code = jsQR(imageData.data, imageData.width, imageData.height, {
+function scan({ canvas, jsQR, scanArea, scanner, onScan }: ScanArgs) {
+  let imageData = canvas.getImageData(scanArea.x, scanArea.y, scanArea.w, scanArea.h);
+  let code = jsQR(imageData.data, scanArea.w, scanArea.h, {
     inversionAttempts: 'dontInvert',
   });
 
