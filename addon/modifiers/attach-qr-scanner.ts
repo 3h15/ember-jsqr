@@ -16,6 +16,7 @@ type Args = {
     onReady: <T>() => T;
     highlightColor?: string;
     scanAreaSize?: number | 'ALL';
+    scanDelay?: number | 'ALL';
   };
 };
 
@@ -28,6 +29,7 @@ type ScanArea = {
 
 const DEFAULT_COLOR = '#FF3B58';
 const DEFAULT_SCAN_AREA_SIZE = 'ALL';
+const DEFAULT_SCAN_DELAY = 0;
 const KEY = 'ember-jsqr/-private/no-really-do-not-directly-access-this-service/scanner';
 
 export default class AttachQrScannerModifier extends Modifier<Args> {
@@ -38,6 +40,8 @@ export default class AttachQrScannerModifier extends Modifier<Args> {
   declare element: HTMLCanvasElement;
 
   _tick: FrameRequestCallback = () => ({});
+
+  lastScannedAt = 0;
 
   get videoStream() {
     return this.args.positional[0];
@@ -57,6 +61,10 @@ export default class AttachQrScannerModifier extends Modifier<Args> {
 
   get scanAreaSize() {
     return this.args?.named.scanAreaSize || DEFAULT_SCAN_AREA_SIZE;
+  }
+
+  get scanDelay() {
+    return this.args?.named.scanDelay || DEFAULT_SCAN_DELAY;
   }
 
   get scanArea() {
@@ -128,19 +136,23 @@ export default class AttachQrScannerModifier extends Modifier<Args> {
         });
       }
 
-      scan({
-        jsQR: this.scanner.jsQR,
-        canvas: this.canvas,
-        scanArea: this.scanArea,
-        scanner: this.scanner,
-        onScan: (code) =>
-          drawBox({
-            canvas: this.canvas!, // TS, huh?
-            scanArea: this.scanArea,
-            location: code.location,
-            color: this.color,
-          }),
-      });
+      const now = Date.now();
+      if (now - this.lastScannedAt > this.scanDelay) {
+        this.lastScannedAt = now;
+        scan({
+          jsQR: this.scanner.jsQR,
+          canvas: this.canvas,
+          scanArea: this.scanArea,
+          scanner: this.scanner,
+          onScan: (code) =>
+            drawBox({
+              canvas: this.canvas!, // TS, huh?
+              scanArea: this.scanArea,
+              location: code.location,
+              color: this.color,
+            }),
+        });
+      }
     }
 
     requestAnimationFrame(this._tick);
